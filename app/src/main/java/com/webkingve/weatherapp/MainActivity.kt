@@ -85,6 +85,17 @@ class MainActivity : AppCompatActivity() {
 
             val longitude = mLastLocation?.longitude
             Log.i("Current Longitude", "$longitude")
+
+            getLocationWeatherDetails()
+        }
+    }
+
+    private fun getLocationWeatherDetails(){
+        //var url =  "http://api.openweathermap.org/data/2.5/weather?q=London,uk&APPID=ce218e55dfe3cd5efaf2abba10351a62"
+        if (Constants.isNetworkAvailable(this)){
+            Toast.makeText(this@MainActivity, "You have connected to the internet", Toast.LENGTH_SHORT).show()
+        }else{
+            Toast.makeText(this@MainActivity, "No internet connection to the internet", Toast.LENGTH_SHORT).show()
         }
     }
 

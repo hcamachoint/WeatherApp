@@ -6,19 +6,22 @@ import android.content.Context
 import android.content.Intent
 import android.location.Location
 import android.location.LocationManager
-import android.Manifest
 import android.app.Dialog
+import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Bundle
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.gms.location.*
+import com.google.gson.Gson
 import com.karumi.dexter.Dexter
 import com.karumi.dexter.MultiplePermissionsReport
 import com.karumi.dexter.PermissionToken
@@ -35,12 +38,17 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var mFusedLocationClient : FusedLocationProviderClient
     private var mProgressDialog: Dialog? = null
+    private lateinit var mSharedPreferences: SharedPreferences
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+
+        mSharedPreferences = getSharedPreferences(Constants.PREFERENCE_NAME, Context.MODE_PRIVATE)
+
+        setupUI()
 
         if (!isLocationEnabled()){
             Toast.makeText(this, "Your location provider is turned off. Please turn it on.", Toast.LENGTH_SHORT).show()
@@ -76,6 +84,7 @@ class MainActivity : AppCompatActivity() {
         val mLocationRequest = com.google.android.gms.location.LocationRequest()
         mLocationRequest.priority = com.google.android.gms.location.LocationRequest.PRIORITY_HIGH_ACCURACY
 
+        mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         mFusedLocationClient.requestLocationUpdates(
             mLocationRequest, mLocationCallback,
             Looper.myLooper()
@@ -122,7 +131,13 @@ class MainActivity : AppCompatActivity() {
                     if (response.isSuccess) {
                         hideProgressDialog()
                         val weatherList: WeatherResponse = response.body()
-                        setupUI(weatherList)
+
+                        val weatherResponseJsonString = Gson().toJson(weatherList)
+                        val editor = mSharedPreferences.edit()
+                        editor.putString(Constants.WEATHER_RESPONSE_DATA, weatherResponseJsonString)
+                        editor.apply()
+
+                        setupUI()
                         Log.i("Response Result", "$weatherList")
                     } else {
                         when (response.code()) {
@@ -183,59 +198,78 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupUI(weatherList: WeatherResponse){
-        for(i in weatherList.weather.indices){
-            Log.i("Weather name", weatherList.weather.toString())
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+        return super.onCreateOptionsMenu(menu)
+    }
 
-            val tv_main : TextView = findViewById(R.id.tv_main)
-            tv_main.text = weatherList.weather[i].main
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when(item.itemId) {
+            R.id.action_refresh -> {
+                requestLocationData()
+                true
+            } else -> super.onOptionsItemSelected(item)
+        }
+    }
 
-            val tv_main_description : TextView = findViewById(R.id.tv_main_description)
-            tv_main_description.text = weatherList.weather[i].description
+    private fun setupUI() {
+        val weatherResponseJsonString = mSharedPreferences.getString(Constants.WEATHER_RESPONSE_DATA, "")
+        if (!weatherResponseJsonString.isNullOrEmpty()){
+            val weatherList = Gson().fromJson(weatherResponseJsonString, WeatherResponse::class.java)
 
-            val tv_temp : TextView = findViewById(R.id.tv_temp)
-            tv_temp.text = weatherList.main.temp.toString() + getUnit(application.resources.configuration.locale.toString())
+            for(i in weatherList.weather.indices){
+                Log.i("Weather name", weatherList.weather.toString())
 
-            val tv_sunrise_time : TextView = findViewById(R.id.tv_sunrise_time)
-            tv_sunrise_time.text = unixTime(weatherList.sys.sunrise)
+                val tv_main : TextView = findViewById(R.id.tv_main)
+                tv_main.text = weatherList.weather[i].main
 
-            val tv_sunset_time : TextView = findViewById(R.id.tv_sunset_time)
-            tv_sunset_time.text = unixTime(weatherList.sys.sunset)
+                val tv_main_description : TextView = findViewById(R.id.tv_main_description)
+                tv_main_description.text = weatherList.weather[i].description
 
-            val tv_humidity : TextView = findViewById(R.id.tv_humidity)
-            tv_humidity.text = weatherList.main.humidity.toString() + " per cent"
+                val tv_temp : TextView = findViewById(R.id.tv_temp)
+                tv_temp.text = weatherList.main.temp.toString() + getUnit(application.resources.configuration.locale.toString())
 
-            val tv_min : TextView = findViewById(R.id.tv_min)
-            tv_min.text = weatherList.main.temp_min.toString() + " min"
+                val tv_sunrise_time : TextView = findViewById(R.id.tv_sunrise_time)
+                tv_sunrise_time.text = unixTime(weatherList.sys.sunrise)
 
-            val tv_max : TextView = findViewById(R.id.tv_max)
-            tv_max.text = weatherList.main.temp_max.toString() + " max"
+                val tv_sunset_time : TextView = findViewById(R.id.tv_sunset_time)
+                tv_sunset_time.text = unixTime(weatherList.sys.sunset)
 
-            val tv_speed : TextView = findViewById(R.id.tv_speed)
-            tv_speed.text = weatherList.wind.speed.toString()
+                val tv_humidity : TextView = findViewById(R.id.tv_humidity)
+                tv_humidity.text = weatherList.main.humidity.toString() + " per cent"
 
-            val tv_name : TextView = findViewById(R.id.tv_name)
-            tv_name.text = weatherList.name
+                val tv_min : TextView = findViewById(R.id.tv_min)
+                tv_min.text = weatherList.main.temp_min.toString() + " min"
 
-            val tv_country : TextView = findViewById(R.id.tv_country)
-            tv_country.text = weatherList.sys.country
+                val tv_max : TextView = findViewById(R.id.tv_max)
+                tv_max.text = weatherList.main.temp_max.toString() + " max"
 
-            val iv_main : ImageView = findViewById(R.id.iv_main)
-            when(weatherList.weather[i].icon){
-                "01d" -> iv_main.setImageResource(R.drawable.sunny)
-                "02d" -> iv_main.setImageResource(R.drawable.cloud)
-                "03d" -> iv_main.setImageResource(R.drawable.cloud)
-                "04d" -> iv_main.setImageResource(R.drawable.cloud)
-                "04n" -> iv_main.setImageResource(R.drawable.cloud)
-                "10d" -> iv_main.setImageResource(R.drawable.rain)
-                "11d" -> iv_main.setImageResource(R.drawable.storm)
-                "13d" -> iv_main.setImageResource(R.drawable.snowflake)
-                "01n" -> iv_main.setImageResource(R.drawable.cloud)
-                "02n" -> iv_main.setImageResource(R.drawable.cloud)
-                "03n" -> iv_main.setImageResource(R.drawable.cloud)
-                "10n" -> iv_main.setImageResource(R.drawable.cloud)
-                "11n" -> iv_main.setImageResource(R.drawable.rain)
-                "13n" -> iv_main.setImageResource(R.drawable.snowflake)
+                val tv_speed : TextView = findViewById(R.id.tv_speed)
+                tv_speed.text = weatherList.wind.speed.toString()
+
+                val tv_name : TextView = findViewById(R.id.tv_name)
+                tv_name.text = weatherList.name
+
+                val tv_country : TextView = findViewById(R.id.tv_country)
+                tv_country.text = weatherList.sys.country
+
+                val iv_main : ImageView = findViewById(R.id.iv_main)
+                when(weatherList.weather[i].icon){
+                    "01d" -> iv_main.setImageResource(R.drawable.sunny)
+                    "02d" -> iv_main.setImageResource(R.drawable.cloud)
+                    "03d" -> iv_main.setImageResource(R.drawable.cloud)
+                    "04d" -> iv_main.setImageResource(R.drawable.cloud)
+                    "04n" -> iv_main.setImageResource(R.drawable.cloud)
+                    "10d" -> iv_main.setImageResource(R.drawable.rain)
+                    "11d" -> iv_main.setImageResource(R.drawable.storm)
+                    "13d" -> iv_main.setImageResource(R.drawable.snowflake)
+                    "01n" -> iv_main.setImageResource(R.drawable.cloud)
+                    "02n" -> iv_main.setImageResource(R.drawable.cloud)
+                    "03n" -> iv_main.setImageResource(R.drawable.cloud)
+                    "10n" -> iv_main.setImageResource(R.drawable.cloud)
+                    "11n" -> iv_main.setImageResource(R.drawable.rain)
+                    "13n" -> iv_main.setImageResource(R.drawable.snowflake)
+                }
             }
         }
     }
